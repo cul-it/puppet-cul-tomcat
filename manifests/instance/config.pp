@@ -25,6 +25,10 @@ define tomcat::instance::config(
   $server_xml_file = undef,
   $web_xml_file    = undef,
   $java_opts       = undef,
+  $systemd_nofile    = undef,
+  $system_conf_owner = $::tomcat::system_conf_owner,
+  $system_conf_group = $::tomcat::system_conf_group,
+  $system_conf_mod   = $::tomcat::system_conf_mod,
 ) {
   # lint:ignore:only_variable_string
   validate_re("${server_port}", '^[0-9]+$')
@@ -163,14 +167,6 @@ define tomcat::instance::config(
     }
   }
 
-  ###
-  # Configure setenv.sh and setenv-local.sh
-  #
-  $present = $ensure ? {
-    'absent' => 'absent',
-    default  => 'present',
-  }
-
   if $tomcat::type == 'package' and
       $::osfamily == 'RedHat' and
       versioncmp($::operatingsystemmajrelease, '6') == 0 {
@@ -179,42 +175,18 @@ define tomcat::instance::config(
     $classpath = "/usr/share/tomcat${version}/bin/tomcat-juli.jar"
   }
 
-  # Default JVM options
-  concat {"${catalina_base}/bin/setenv.sh":
-    ensure => $present,
-    owner  => 'root',
-    group  => $group,
-    mode   => '0754',
-  }
-  concat::fragment { "setenv.sh_${name}+01_header":
-    target  => "${catalina_base}/bin/setenv.sh",
-    content => template('tomcat/setenv.sh.header.erb'),
-    order   => '01',
-  }
-  concat::fragment { "setenv.sh_${name}+99_footer":
-    target  => "${catalina_base}/bin/setenv.sh",
-    content => template('tomcat/setenv.sh.footer.erb'),
-    order   => '99',
-  }
-
-  # User customized JVM options
-  file {"${catalina_base}/bin/setenv-local.sh":
-    ensure  => $present,
-    replace => false,
-    content => template('tomcat/setenv-local.sh.erb'),
-    owner   => 'root',
-    group   => $group,
-    mode    => '0574',
-  }
-
   ###
   # Configure Init script
   #
   if $::osfamily == 'RedHat' and $::tomcat::params::systemd {
-    if !empty($setenv) {
-      warning "\$setenv is deprecated (current value: ${setenv}, please use \$java_opts instead"
-    }
     include ::systemd
+
+    file {"${catalina_base}/bin/setenv.sh":
+      ensure => absent,
+    }
+    file {"${catalina_base}/bin/setenv-local.sh":
+      ensure  => absent,
+    }
 
     file { "/usr/lib/systemd/system/tomcat-${name}.service":
       ensure  => file,
@@ -224,23 +196,24 @@ define tomcat::instance::config(
       content => ".include /usr/lib/systemd/system/tomcat.service
 [Service]
 UMask=${umask}
+LimitNOFILE=${systemd_nofile}
 Environment=\"SERVICE_NAME=tomcat-${name}\"
 EnvironmentFile=-/etc/sysconfig/tomcat-${name}
 ",
-    } ~>
-    Exec['systemctl-daemon-reload'] ~>
-    Tomcat::Instance::Service[$title]
+    }
+    ~> Exec['systemctl-daemon-reload']
+    ~> Tomcat::Instance::Service[$title]
 
     file { "/etc/sysconfig/tomcat-${name}":
       ensure  => file,
-      owner   => 'root',
-      group   => 'root',
-      mode    => '0664',
+      owner   => $system_conf_owner,
+      group   => $system_conf_group,
+      mode    => $system_conf_mod,
       source  => '/etc/sysconfig/tomcat',
       replace => false,
       notify  => Service["tomcat-${name}"],
-    } ->
-    shellvar { "CATALINA_BASE_${name}":
+    }
+    -> shellvar { "CATALINA_BASE_${name}":
       ensure    => present,
       target    => "/etc/sysconfig/tomcat-${name}",
       variable  => 'CATALINA_BASE',
@@ -257,7 +230,49 @@ EnvironmentFile=-/etc/sysconfig/tomcat-${name}
         require   => File["/etc/sysconfig/tomcat-${name}"],
       }
     }
+    if $setenv {
+      tomcat::instance::config::systemd_env {$setenv:
+        instance => $name,
+        target   => "/etc/sysconfig/tomcat-${name}",
+      }
+    }
   } else {
+    ###
+    # Configure setenv.sh and setenv-local.sh
+    #
+    $present = $ensure ? {
+      'absent' => 'absent',
+      default  => 'present',
+    }
+
+    # Default JVM options
+    concat {"${catalina_base}/bin/setenv.sh":
+      ensure => $present,
+      owner  => 'root',
+      group  => $group,
+      mode   => '0754',
+    }
+    concat::fragment { "setenv.sh_${name}+01_header":
+      target  => "${catalina_base}/bin/setenv.sh",
+      content => template('tomcat/setenv.sh.header.erb'),
+      order   => '01',
+    }
+    concat::fragment { "setenv.sh_${name}+99_footer":
+      target  => "${catalina_base}/bin/setenv.sh",
+      content => template('tomcat/setenv.sh.footer.erb'),
+      order   => '99',
+    }
+
+    # User customized JVM options
+    file {"${catalina_base}/bin/setenv-local.sh":
+      ensure  => $present,
+      replace => false,
+      content => template('tomcat/setenv-local.sh.erb'),
+      owner   => 'root',
+      group   => $group,
+      mode    => '0574',
+    }
+
     # Variables used in tomcat.init.erb
     $tomcat_name = $name
     $basedir     = $catalina_base
@@ -315,9 +330,9 @@ EnvironmentFile=-/etc/sysconfig/tomcat-${name}
 
     if $::operatingsystem == 'Debian' and $::tomcat::params::systemd {
       include ::systemd
-      File["/etc/init.d/tomcat-${name}"] ~>
-      Exec['systemctl-daemon-reload'] ~>
-      Tomcat::Instance::Service[$title]
+      File["/etc/init.d/tomcat-${name}"]
+      ~> Exec['systemctl-daemon-reload']
+      ~> Tomcat::Instance::Service[$title]
     }
   }
 }
