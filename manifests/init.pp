@@ -7,9 +7,6 @@ class tomcat (
   $tomcat_uid       = undef,
   $tomcat_gid       = undef,
   $ulimits          = {},
-  $system_conf_group = 'root',
-  $system_conf_mod   = '0664',
-  $system_conf_owner = 'root',
 ) inherits ::tomcat::params {
 
   validate_re($version, '^[5-8]([\.0-9]+)?$')
@@ -44,8 +41,8 @@ class tomcat (
 
   create_resources('tomcat::ulimit', $ulimits)
 
-  class {'::tomcat::install': }
-  -> class {'::tomcat::user': }
-  -> Class['tomcat']
+  class {'::tomcat::install': } ->
+  class {'::tomcat::user': } ->
+  Class['tomcat']
 
 }

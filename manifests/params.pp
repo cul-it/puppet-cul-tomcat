@@ -66,7 +66,5 @@ class tomcat::params {
 
   $instance_basedir = '/srv/tomcat'
   $sources_src = 'http://archive.apache.org/dist/tomcat/'
-  $system_conf_owner = 'root'
-  $system_conf_group = 'root'
-  $system_conf_mod = '0660'
+
 }

@@ -1,19 +1,3 @@
-## 2017-07-13 - Release 0.16.5
-
-Add possibility to change owner and group of RHEL7 system config files.
-
-## 2017-07-13 - Release 0.16.3
-
-Add support for systemd limit per instance
-
-## 2016-07-28 - Release 0.16.1
-
-Fix unit tests (and deploy to puppetforge)
-
-## 2016-07-28 - Release 0.16.0
-
-Fix tomcat instance settings on RHEL 7 ($setenv is not deprecated anymore)
-
 ## 2015-09-23 - Release 0.15.0
 
 Add java_opts params to tomcat::instance for setting JAVA_OPTS on RedHat7 only for the moment (deprecating $setenv)
